@@ -1,1 +1,177 @@
+//个人作业程序源码，文件输入采用命令行参数使用，不知道怎么上传编译好的jar包，只能采取这种形式，实在对Github的操作不熟悉，待测试时还麻烦了
+import com.hankcs.hanlp.HanLP;
+import com.hankcs.hanlp.corpus.tag.Nature;
+import com.hankcs.hanlp.seg.common.Term;
+import java.io.*;
+import java.util.*;
 
+public class MainTest {
+    public static void main(String[] args){
+        Txt test = new Txt();
+        Similarity similarity = new Similarity();
+        String str1 = test.readTxt(args[0]);
+        String str2 = test.readTxt(args[1]);
+       double answer = similarity.calTxtSimilar(str1, str2);
+        test.writeTxt(args[2], String.valueOf(answer));
+        System.out.println("查重率：" + answer);
+    }
+}
+    class Txt {
+        //读取文档，返回字符串
+        public String readTxt(String filename) {
+            File file = new File(filename);
+            FileReader f = null;
+            BufferedReader f1 = null;
+            String strings = null;
+            try {
+                f = new FileReader(file);
+                f1 = new BufferedReader(f);
+                String string = null;
+                while ((string = f1.readLine()) != null) {
+                    strings += string;
+                }
+            } catch (Exception e) {
+                System.out.println("文件操作出现错误");
+            } finally {
+                try {
+                    f1.close();
+                    f.close();
+                } catch (Exception e2) {
+                    System.out.println("文件操作出现错误");
+                }
+            }
+            return strings;
+        }
+        // 将显示值写进目标文档中
+        public void writeTxt(String filename, String answer) {
+            FileWriter f = null;
+            BufferedWriter f1 = null;
+            try {
+                f = new FileWriter(filename);
+                f1 = new BufferedWriter(f);
+                f1.write(answer);
+                f1.newLine();
+            } catch (Exception e) {
+                System.out.println("文件操作出现错误");
+            } finally {
+                try {
+                    f1.close();
+                    f.close();
+                } catch (Exception e2) {
+                    System.out.println("文件操作出现错误");
+                }
+            }
+        }
+    }
+
+    class Similarity {
+        public double calTxtSimilar(String realtxt, String faketxt) {
+            //文档的总词库
+            List<String> totalWordList = new ArrayList<String>();
+            //计算文档的词频
+            Map<String, Integer> realWordCountMap = getWordCountMap(realtxt, totalWordList);
+            Map<String, Float> realWordTfMap = calculateWordTf(realWordCountMap);
+
+            Map<String, Integer> fakeWordCountMap = getWordCountMap(faketxt, totalWordList);
+            Map<String, Float> fakeWordTfMap = calculateWordTf(fakeWordCountMap);
+
+
+            //获取文档的特征值
+            List<Float> realFeature = getTxtFeature(totalWordList, realWordTfMap);
+            List<Float> fakeFeature = getTxtFeature(totalWordList, fakeWordTfMap);
+
+            //计算文档对应特征值的平方和的平方根
+            float realVectorSqrt = calculateVectorSqrt(realWordTfMap);
+            float fakeVectorSqrt = calculateVectorSqrt(fakeWordTfMap);
+
+            //根据余弦定理公式，计算余弦公式中的分子
+            float fenzi = getCosValue(realFeature, fakeFeature);
+
+            //根据余弦定理计算两个文档的余弦值
+            double cosValue = 0;
+            if (fenzi > 0) {
+                cosValue = fenzi / (realVectorSqrt * fakeVectorSqrt);
+            }
+            cosValue = Double.parseDouble(String.format("%.4f", cosValue));//String.format 字符串格式化
+            return cosValue;
+
+        }
+
+        public Map<String, Integer> getWordCountMap(String txt, List<String> totalWordList) {
+            Map<String, Integer> wordCountMap = new HashMap<String, Integer>();
+            List<Term> words = HanLP.segment(txt);
+            int count = 0;
+            for (Term tm : words) {
+                //取字数为两个字或两个字以上名词或动名词作为关键词  不理解
+                if (tm.word.length() > 1 && (tm.nature == Nature.n || tm.nature == Nature.vn)) {
+                    count = 1;
+                    if (wordCountMap.containsKey(tm.word)) {
+                        count = wordCountMap.get(tm.word) + 1;
+                        wordCountMap.remove(tm.word);
+                    }
+                    wordCountMap.put(tm.word, count);
+                    if (!totalWordList.contains(tm.word)) {
+                        totalWordList.add(tm.word);
+                    }
+                }
+            }
+            return wordCountMap;
+        }
+
+
+        //计算关键词词频 不理解
+        private Map<String, Float> calculateWordTf(Map<String, Integer> wordCountMap) {
+            Map<String, Float> wordTfMap = new HashMap<String, Float>();
+            int totalWordsCount = 0;
+            Collection<Integer> cv = wordCountMap.values();
+            for (Integer count : cv) {
+                totalWordsCount += count;
+            }
+
+            //wordTfMap = new HashMap<String, Float>();
+            Set<String> keys = wordCountMap.keySet();
+            for (String key : keys) {
+                wordTfMap.put(key, wordCountMap.get(key) / (float) totalWordsCount);
+            }
+            return wordTfMap;
+        }
+
+        //计算文档对应特征值的平方和的平方根
+        private float calculateVectorSqrt(Map<String, Float> wordTfMap) {
+            float result = 0;
+            Collection<Float> cols = wordTfMap.values();
+            for (Float temp : cols) {
+                if (temp > 0) {
+                    result += temp * temp;
+                }
+            }
+            return (float) Math.sqrt(result);
+        }
+
+        //计算特征值？？
+        private List<Float> getTxtFeature(List<String> totalWordList, Map<String, Float> wordCountMap) {
+            List<Float> list = new ArrayList<Float>();
+            for (String word : totalWordList) {
+                float tf = 0;
+                if (wordCountMap.containsKey(word)) {
+                    tf = wordCountMap.get(word);
+                }
+                list.add(tf);
+            }
+            return list;
+        }
+
+        private float getCosValue(List<Float> leftFeature, List<Float> rightFeature) {
+            float fenzi = 0;
+            float tempX = 0;
+            float tempY = 0;
+            for (int i = 0; i < leftFeature.size(); i++) {
+                tempX = leftFeature.get(i);
+                tempY = rightFeature.get(i);
+                if (tempX > 0 && tempY > 0) {
+                    fenzi += tempX * tempY;
+                }
+            }
+            return fenzi;
+        }
+    }
